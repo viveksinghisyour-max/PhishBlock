@@ -2,10 +2,12 @@ package com.phishblock
 
 import android.Manifest
 import android.app.Application
+import android.content.ComponentName
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.TextUtils
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -50,6 +52,11 @@ class MainActivity : ComponentActivity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 100)
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-check permissions when returning to the app
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,6 +68,13 @@ fun SecurityApp() {
     val messages by viewModel.messages.observeAsState(emptyList())
     val news by viewModel.news.observeAsState(emptyList())
     var selectedTab by remember { mutableIntStateOf(0) }
+    
+    val isNotificationListenerEnabled = remember { mutableStateOf(isNotificationServiceEnabled(context)) }
+
+    // Update state when window gets focus (e.g. returning from settings)
+    DisposableEffect(Unit) {
+        onDispose {}
+    }
 
     Scaffold(
         topBar = {
@@ -74,16 +88,44 @@ fun SecurityApp() {
             )
         },
         floatingActionButton = {
-            if (selectedTab == 0) {
-                FloatingActionButton(onClick = {
-                    context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-                }) {
-                    Text("Enable")
+            if (selectedTab == 0 && !isNotificationListenerEnabled.value) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                    },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Text("Enable Protection")
                 }
             }
         }
     ) { paddingValues ->
         Column(modifier = Modifier.padding(paddingValues)) {
+            if (!isNotificationListenerEnabled.value && selectedTab == 0) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Protection is disabled. Please enable Notification Access to scan messages.",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Button(onClick = {
+                            isNotificationListenerEnabled.value = isNotificationServiceEnabled(context)
+                        }) {
+                            Text("Check")
+                        }
+                    }
+                }
+            }
+
             TabRow(selectedTabIndex = selectedTab) {
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
                     Text("Messages", modifier = Modifier.padding(16.dp))
@@ -98,6 +140,23 @@ fun SecurityApp() {
             }
         }
     }
+}
+
+fun isNotificationServiceEnabled(context: android.content.Context): Boolean {
+    val pkgName = context.packageName
+    val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
+    if (!TextUtils.isEmpty(flat)) {
+        val names = flat.split(":").toTypedArray()
+        for (i in names.indices) {
+            val cn = ComponentName.unflattenFromString(names[i])
+            if (cn != null) {
+                if (TextUtils.equals(pkgName, cn.packageName)) {
+                    return true
+                }
+            }
+        }
+    }
+    return false
 }
 
 @Composable
@@ -131,11 +190,13 @@ fun MessageCard(msg: Message) {
             Text(text = msg.text, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Spacer(modifier = Modifier.height(4.dp))
             if (msg.isMalicious) {
-                Text(
-                    text = "⚠️ Risk: ${msg.riskScore}% - ${msg.reason}",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
+                run {
+                    Text(
+                        text = "⚠️ Risk: ${msg.riskScore}% - ${msg.reason}",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             } else {
                 Text(
                     text = "✅ Safe (risk ${msg.riskScore}%)",
