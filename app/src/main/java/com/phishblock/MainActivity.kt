@@ -179,33 +179,42 @@ fun MessageList(messages: List<Message>) {
 
 @Composable
 fun MessageCard(msg: Message) {
+    val risk = msg.riskScore
+    val (statusLabel, statusColor, containerColor) = when {
+        risk >= 50 -> Triple(
+            "🚨 Phishing",
+            MaterialTheme.colorScheme.error,
+            MaterialTheme.colorScheme.errorContainer
+        )
+        risk >= 20 -> Triple(
+            "⚠️ Suspicious",
+            Color(0xFFF57C00), // Orange
+            Color(0xFFFFF3E0)  // Light Orange
+        )
+        else -> Triple(
+            "✅ Safe",
+            Color(0xFF2E7D32), // Green
+            MaterialTheme.colorScheme.surfaceVariant
+        )
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth().padding(8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (msg.isMalicious) MaterialTheme.colorScheme.errorContainer
-            else MaterialTheme.colorScheme.surfaceVariant
-        )
+        colors = CardDefaults.cardColors(containerColor = containerColor)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(text = msg.text, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            Spacer(modifier = Modifier.height(4.dp))
-            if (msg.isMalicious) {
-                run {
-                    Text(
-                        text = "⚠️ Risk: ${msg.riskScore}% - ${msg.reason}",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            } else {
-                Text(
-                    text = "✅ Safe (risk ${msg.riskScore}%)",
-                    color = Color(0xFF2E7D32),
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
+            Spacer(modifier = Modifier.height(8.dp))
+            
             Text(
-                text = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(msg.timestamp),
+                text = "$statusLabel (risk $risk%)",
+                color = statusColor,
+                style = MaterialTheme.typography.titleSmall
+            )
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = SimpleDateFormat("MMM dd, HH:mm:ss", Locale.getDefault()).format(msg.timestamp),
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.Gray
             )
